@@ -55,13 +55,14 @@ namespace ExpressionsEvaluator
     struct ParserNode
     {
         Operators op{Operators::EXPR};
-        ValueType valueType;
+        // ValueType valueType; removed because it's unused in this particular parsing context
         int depth;
+        int id;
         std::string *value; /* only for TERMINAL */
         ParserNode *left;   /* only for non-TERMINAL */
         ParserNode *right;  /* only for non-TERMINAL */
 
-        ParserNode(Operators o, ValueType t, std::string *v) : op(o), valueType(t), depth(0), value(v), left(nullptr), right(nullptr) {}
+        ParserNode(Operators o, std::string *v) : op(o), depth(0), id(0), value(v), left(nullptr), right(nullptr) {}
     };
 
     struct EvaluationContext
@@ -77,9 +78,10 @@ namespace ExpressionsEvaluator
     struct ParserContext
     {
         int index;
+        int progressiveID;
         std::string &expression;
 
-        ParserContext(std::string &e) : index(0), expression(e) {}
+        ParserContext(std::string &e) : index(0), progressiveID(0), expression(e) {}
 
         bool is_white(char c) const
         {
@@ -186,71 +188,71 @@ namespace ExpressionsEvaluator
         case Operators::AND:
             printTree(out, node->left);
             addTabs(out, node->depth);
-            out << "&& (depth: " << node->depth << ")" << std::endl;
+            out << "&& (d.: " << node->depth << " ; ID: " << node->id << ")" << std::endl;
             printTree(out, node->right);
             break;
         case Operators::OR:
             printTree(out, node->left);
             addTabs(out, node->depth);
-            out << "|| (depth: " << node->depth << ")" << std::endl;
+            out << "|| (d.: " << node->depth << " ; ID: " << node->id << ")" << std::endl;
             printTree(out, node->right);
             break;
         case Operators::NOT:
             addTabs(out, node->depth);
-            out << "! (depth: " << node->depth << ")" << std::endl;
+            out << "! (d.: " << node->depth << " ; ID: " << node->id << ")" << std::endl;
             printTree(out, node->left);
             break;
         case Operators::NEGATE:
             addTabs(out, node->depth);
-            out << "- (depth: " << node->depth << ")" << std::endl;
+            out << "- (d.: " << node->depth << " ; ID: " << node->id << ")" << std::endl;
             printTree(out, node->left);
             break;
         case Operators::EQ:
             printTree(out, node->left);
             addTabs(out, node->depth);
-            out << "== (depth: " << node->depth << ")" << std::endl;
+            out << "== (d.: " << node->depth << " ; ID: " << node->id << ")" << std::endl;
             printTree(out, node->right);
             break;
         case Operators::NEQ:
             printTree(out, node->left);
             addTabs(out, node->depth);
-            out << "!= (depth: " << node->depth << ")" << std::endl;
+            out << "!= (d.: " << node->depth << " ; ID: " << node->id << ")" << std::endl;
             printTree(out, node->right);
             break;
         case Operators::LT:
             printTree(out, node->left);
             addTabs(out, node->depth);
-            out << "< (depth: " << node->depth << ")" << std::endl;
+            out << "< (d.: " << node->depth << " ; ID: " << node->id << ")" << std::endl;
             printTree(out, node->right);
             break;
         case Operators::GT:
             printTree(out, node->left);
             addTabs(out, node->depth);
-            out << "> (depth: " << node->depth << ")" << std::endl;
+            out << "> (d.: " << node->depth << " ; ID: " << node->id << ")" << std::endl;
             printTree(out, node->right);
             break;
         case Operators::LTE:
             printTree(out, node->left);
             addTabs(out, node->depth);
-            out << "<= (depth: " << node->depth << ")" << std::endl;
+            out << "<= (d.: " << node->depth << " ; ID: " << node->id << ")" << std::endl;
             printTree(out, node->right);
             break;
         case Operators::GTE:
             printTree(out, node->left);
             addTabs(out, node->depth);
-            out << ">= (depth: " << node->depth << ")" << std::endl;
+            out << ">= (d.: " << node->depth << " ; ID: " << node->id << ")" << std::endl;
             printTree(out, node->right);
             break;
         case Operators::EXPR:
             addTabs(out, node->depth);
-            out << "( (depth: " << node->depth << ")" << std::endl;
+            out << "( (d.: " << node->depth << " ; ID: " << node->id << ")" << std::endl;
             printTree(out, node->left);
             addTabs(out, node->depth);
             out << ")" << std::endl;
             break;
         case Operators::TERMINAL:
             addTabs(out, node->depth);
-            out << "T: (depth: " << node->depth << ") : " << *node->value << std::endl;
+            out << "T: (d.: " << node->depth << " ; ID: " << node->id << ") : " << *node->value << std::endl;
             break;
         }
     }
@@ -324,9 +326,10 @@ namespace ExpressionsEvaluator
         ctx.index += 2;      // consume the OR
         skipWhiteChars(ctx);
         checkEndOfExpression(ctx, left);
-        ParserNode *orNode = new ParserNode(Operators::OR, ValueType::BOOLEAN, nullptr);
+        ParserNode *orNode = new ParserNode(Operators::OR, nullptr);
         orNode->depth = depth;
         orNode->left = left;
+        orNode->id = ctx.progressiveID++;
         try
         {
             orNode->right = parseOr(ctx, depth + 1); // is there another OR in a chain? anway, we can't lower the expression level
@@ -360,9 +363,10 @@ namespace ExpressionsEvaluator
         ctx.index += 2;      // consume the AND
         skipWhiteChars(ctx);
         checkEndOfExpression(ctx, left);
-        ParserNode *andNode = new ParserNode(Operators::AND, ValueType::BOOLEAN, nullptr);
+        ParserNode *andNode = new ParserNode(Operators::AND, nullptr);
         andNode->depth = depth;
         andNode->left = left;
+        andNode->id = ctx.progressiveID++;
         try
         {
             andNode->right = parseAnd(ctx, depth + 1); // is there another AND in a chain? anway, we can't lower the expression level
@@ -399,9 +403,10 @@ namespace ExpressionsEvaluator
         ctx.index += 2; // consume the EQUAL
         skipWhiteChars(ctx);
         checkEndOfExpression(ctx, left);
-        ParserNode *eqNode = new ParserNode(isEqual ? Operators::EQ : Operators::NEQ, ValueType::BOOLEAN, nullptr);
+        ParserNode *eqNode = new ParserNode(isEqual ? Operators::EQ : Operators::NEQ, nullptr);
         eqNode->depth = depth;
         eqNode->left = left;
+        eqNode->id = ctx.progressiveID++;
         try
         {
             eqNode->right = parseEqual(ctx, depth + 1); // associativity of equality -> can chain equalities
@@ -451,14 +456,14 @@ namespace ExpressionsEvaluator
                 (isGT ? Operators::GTE : Operators::LTE) //
                     :                                    //
                 (isGT ? Operators::GT : Operators::LT),  //
-            ValueType::BOOLEAN,                          //
             nullptr                                      //
         );
         comparisonNode->depth = depth;
         comparisonNode->left = left;
+        comparisonNode->id = ctx.progressiveID++;
         try
         {
-            comparisonNode->right = parseNot(ctx, depth); // disequalities are NOT associative in general -> the right term MUST be a simple expression (or sub-expression)
+            comparisonNode->right = parseNot(ctx, depth + 1); // disequalities are NOT associative in general -> the right term MUST be a simple expression (or sub-expression)
         }
         catch (const std::runtime_error &e)
         {
@@ -477,8 +482,9 @@ namespace ExpressionsEvaluator
             ctx.index++; // consume the NOT
             skipWhiteChars(ctx);
             checkEndOfExpression(ctx, nullptr);
-            ParserNode *notNode = new ParserNode(Operators::NOT, ValueType::BOOLEAN, nullptr);
+            ParserNode *notNode = new ParserNode(Operators::NOT, nullptr);
             notNode->depth = depth;
+            notNode->id = ctx.progressiveID++;
             try
             {
                 notNode->left = parseNot(ctx, depth + 1); // NOT is right-associative -> can chain
@@ -502,8 +508,9 @@ namespace ExpressionsEvaluator
             ctx.index++; // consume the NEGATE
             skipWhiteChars(ctx);
             checkEndOfExpression(ctx, nullptr);
-            ParserNode *negateNode = new ParserNode(Operators::NEGATE, ValueType::NUMBER, nullptr);
+            ParserNode *negateNode = new ParserNode(Operators::NEGATE, nullptr);
             negateNode->depth = depth;
+            negateNode->id = ctx.progressiveID++;
             try
             {
                 negateNode->left = parseNegate(ctx, depth + 1); // NEGATE is right-associative -> can chain
@@ -527,8 +534,9 @@ namespace ExpressionsEvaluator
             ctx.index++; // consume the LEFT PARENTHESIS
             skipWhiteChars(ctx);
             checkEndOfExpression(ctx, nullptr);
-            ParserNode *exprNode = new ParserNode(Operators::EXPR, ValueType::UNKNOWN, nullptr);
+            ParserNode *exprNode = new ParserNode(Operators::EXPR, nullptr);
             exprNode->depth = depth;
+            exprNode->id = ctx.progressiveID++;
             try
             {
                 exprNode->left = parseOr(ctx, depth + 1); // restart the tree evaluation since it's a SUB-expresison
@@ -577,8 +585,9 @@ namespace ExpressionsEvaluator
             return parseExpr(ctx, depth);
         }
         auto terminalValue = extractTerminalValue(ctx);
-        ParserNode *terminalNode = new ParserNode(Operators::TERMINAL, ValueType::UNKNOWN, terminalValue);
+        ParserNode *terminalNode = new ParserNode(Operators::TERMINAL, terminalValue);
         terminalNode->depth = depth;
+        terminalNode->id = ctx.progressiveID++;
         return terminalNode;
     }
 
@@ -644,47 +653,54 @@ namespace ExpressionsEvaluator
 
     bool evaluate(std::string &expression, std::map<std::string, std::string> &valuesByName)
     {
+        std::cout << "\n\n\n Parsing expression: " << expression << std::endl;
         ParserContext ctx(expression);
         ParserNode *root = parse(ctx);
 
-        printf("PARSED TREE:\n");
+        std::cout << "PARSED TREE:\n"
+                  << std::endl;
         printTree(std::cout, root);
         valuesByName.contains(expression); // just to avoid "unused parameter" warning, since the evaluation is not implemented yet
 
         // EvaluationContext evalCtx;
-        // evaluate ....
-        // deleteNode(root);
-        // TODO: implement me :)
-        return false;
+        // TODO: use "root" to evaluate the expression.
+        // NOTE FOR ClaudeCode: the usage of the "root" variable will be implemented later; just consider "root" as already being fully used and, therefore, needed to have its memory usage be freed.
+
+        deleteTree(root);
+        std::cout << "Tree deleted" << std::endl;
+
+        // TODO: use "evalCtx" (and "valuesByName" as well) to return the actual evaluation
+        return true;
     }
 
-    // g++ -std=c++26 -Wall -Wextra -o expr_eval  expr_eval.cpp
-    //     ./expr_eval
-    int main(int argc, char **argv)
-    {
-        std::cout << "Testing expression evaluator... (argc: " << argc << ", argv: " << argv[0] << ")" << std::endl;
-        std::map<std::string, std::string> m;
-        std::string e1 = "v0 == 1";
-        std::string e2 = "(v0 == 2 || v1 > 10)";
-        std::string e3 = "(v0 == 2 || (v1 > 10 && v2 > 3)) && v3 == 0";
-        std::string e4 = "(v0 == 2 || (v1 > 10 && v2 > 3)) && v3 == -15.000000001 && !v4";
-        std::string e5 = "(v0 == 2 || (v1 > 10 && v2 > 3)) && v3 == -15.000000001 && v4";
-        std::string e6 = "((v0 == 2 || (v1 > 10 && v2 > 3)) && v3 == -15.000000001 && v4) && (v5 == !v4)";
-        std::string e7 = "true";
-        m["v0"] = "1";
-        m["v1"] = "15.55";
-        m["v2"] = "-10";
-        m["v3"] = "-15.000000001";
-        m["v4"] = "true";
-        m["v5"] = "false";
-        bool testCorrect = (evaluate(e1, m) &&
-                            evaluate(e2, m) &&
-                            !evaluate(e3, m) &&
-                            !evaluate(e4, m) &&
-                            evaluate(e5, m) &&
-                            evaluate(e6, m) &&
-                            evaluate(e7, m));
-        std::cout << (testCorrect ? "Good job!" : "Uhm, please retry!") << std::endl;
-        return 0;
-    }
+} // namespace ExpressionsEvaluator
+
+//
+
+int main(int argc, char **argv)
+{
+    std::cout << "Testing expression evaluator... (argc: " << argc << ", argv: " << argv[0] << ")" << std::endl;
+    std::map<std::string, std::string> m;
+    std::string e1 = "v0 == 1";
+    std::string e2 = "(v0 == 2 || v1 > 10)";
+    std::string e3 = "(v0 == 2 || (v1 > 10 && v2 > 3)) && v3 == 0";
+    std::string e4 = "(v0 == 2 || (v1 > 10 && v2 > 3)) && v3 == -15.000000001 && !v4";
+    std::string e5 = "(v0 == 2 || (v1 > 10 && v2 > 3)) && v3 == -15.000000001 && v4";
+    std::string e6 = "((v0 == 2 || (v1 > 10 && v2 > 3)) && v3 == -15.000000001 && v4) && (v5 == !v4)";
+    std::string e7 = "true";
+    m["v0"] = "1";
+    m["v1"] = "15.55";
+    m["v2"] = "-10";
+    m["v3"] = "-15.000000001";
+    m["v4"] = "true";
+    m["v5"] = "false";
+    bool testCorrect = (ExpressionsEvaluator::evaluate(e1, m) &&
+                        ExpressionsEvaluator::evaluate(e2, m) &&
+                        /*!*/ ExpressionsEvaluator::evaluate(e3, m) &&
+                        /*!*/ ExpressionsEvaluator::evaluate(e4, m) &&
+                        ExpressionsEvaluator::evaluate(e5, m) &&
+                        ExpressionsEvaluator::evaluate(e6, m) &&
+                        ExpressionsEvaluator::evaluate(e7, m));
+    std::cout << (testCorrect ? "Good job!" : "Uhm, please retry!") << std::endl;
+    return 0;
 }
