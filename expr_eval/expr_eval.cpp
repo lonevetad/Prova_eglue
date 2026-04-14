@@ -138,6 +138,7 @@ namespace ExpressionsEvaluator
             node->value = subExpr->value;
             node->right = subExpr->right;
             node->left = subExpr->left;
+            node->id = subExpr->id;
             delete subExpr;
             alterDepth(node, -1, false);
             return optimize(node); // should I optimize again?
@@ -153,6 +154,7 @@ namespace ExpressionsEvaluator
             node->value = deeperNotNode->value;
             node->right = deeperNotNode->right;
             node->left = deeperNotNode->left;
+            node->id = deeperNotNode->id;
             delete deeperNotNode;
             delete notNode;
             alterDepth(node, -2, false);
@@ -650,6 +652,153 @@ namespace ExpressionsEvaluator
     */
 
     // start
+
+    static bool tryFillFromLiteral(EvaluationContext *ctx, const std::string &s)
+    {
+        if (s == "true")
+        {
+            ctx->resultType = ValueType::BOOLEAN;
+            ctx->result.boolValue = true;
+            return true;
+        }
+        if (s == "false")
+        {
+            ctx->resultType = ValueType::BOOLEAN;
+            ctx->result.boolValue = false;
+            return true;
+        }
+        std::size_t pos = 0;
+        try
+        {
+            double num = std::stod(s, &pos);
+            if (pos == s.size())
+            {
+                ctx->resultType = ValueType::NUMBER;
+                ctx->result.numberValue = num;
+                return true;
+            }
+        }
+        catch (...)
+        {
+        }
+        return false;
+    }
+
+    static EvaluationContext *resolveValue(ParserNode *terminalNode, std::map<std::string, std::string> &valuesByName)
+    {
+        std::string *terminalStr = terminalNode->value;
+        EvaluationContext *resolvedValue = new EvaluationContext();
+        if (!tryFillFromLiteral(resolvedValue, *terminalStr))
+        {
+            auto it = valuesByName.find(*terminalStr);
+            if (it == valuesByName.end())
+            {
+                delete resolvedValue;
+                throw std::runtime_error(std::format("Unknown variable: {}", *terminalStr));
+            }
+            if (!tryFillFromLiteral(resolvedValue, it->second))
+            {
+                delete resolvedValue;
+                throw std::runtime_error(std::format("Variable '{}' has non-literal value: {}", *terminalStr, it->second));
+            }
+        }
+        return resolvedValue;
+    }
+
+    static EvaluationContext *evaluateTree(std::ostream &out, ParserNode *currentNode, std::map<std::string, std::string> &valuesByName)
+    {
+        EvaluationContext *result = nullptr;
+        switch (currentNode->op)
+        {
+        case Operators::AND:
+            result = evaluateTree(out, currentNode->left, valueByName); // recycle "result" as left
+            if (result->resultType != ResultType::BOOLEAN)
+            {
+                printTree(out, currentNode);
+                delete result;
+                throw std::runtime_error(std::format("Current node (ID: {}) is a AND and expects its left sub-expression to be a BOOLEAN variable, but isn't", currentNode->id));
+            }
+            EvaluationContext *resRight = evaluateTree(out, currentNode->right, valueByName);
+            if (resRight->resultType != ResultType::BOOLEAN)
+            {
+                printTree(out, currentNode);
+                delete resRight;
+                throw std::runtime_error(std::format("Current node (ID: {}) is a AND and expects its right sub-expression to be a BOOLEAN variable, but isn't", currentNode->id));
+            }
+            result->result = (result->result) && (resRight->result);
+            delete resRight;
+            break;
+        case Operators::OR:
+            result = evaluateTree(out, currentNode->left, valueByName); // recycle "result" as left
+            if (result->resultType != ResultType::BOOLEAN)
+            {
+                printTree(out, currentNode);
+                delete result;
+                throw std::runtime_error(std::format("Current node (ID: {}) is a OR and expects its left sub-expression to be a BOOLEAN variable, but isn't", currentNode->id));
+            }
+            EvaluationContext *resRight = evaluateTree(out, currentNode->right, valueByName);
+            if (resRight->resultType != ResultType::BOOLEAN)
+            {
+                printTree(out, currentNode);
+                delete resRight;
+                throw std::runtime_error(std::format("Current node (ID: {}) is a OR and expects its right sub-expression to be a BOOLEAN variable, but isn't", currentNode->id));
+            }
+            result->result = (result->result) || (resRight->result);
+            delete resRight;
+            break;
+        case Operators::NOT:
+            result = evaluateTree(out, currentNode->left, valueByName);
+            if (result->resultType == ResultType::BOOLEAN)
+            {
+                result->result = !(result->result);
+            }
+            else
+            {
+                printTree(out, currentNode);
+                delete result;
+                throw std::runtime_error(std::format("Current node (ID: {}) is a NOT and expects its sub-expression to be a BOOLEAN variable, but isn't", currentNode->id));
+            }
+            break;
+        case Operators::NEGATE:
+            result = evaluateTree(out, currentNode->left, valueByName);
+            if (result->resultType == ResultType::NUMBER)
+            {
+                result->result = -(result->result);
+            }
+            else
+            {
+                printTree(out, currentNode);
+                delete result;
+                throw std::runtime_error(std::format("Current node (ID: {}) is a NEGATE and expects its sub-expression to be a NUMBER variable, but isn't", currentNode->id));
+            }
+            break;
+        case Operators::EQ:
+            // TODO
+            break;
+        case Operators::NEQ:
+            // TODO
+            break;
+        case Operators::LT:
+            // TODO
+            break;
+        case Operators::GT:
+            // TODO
+            break;
+        case Operators::LTE:
+            // TODO
+            break;
+        case Operators::GTE:
+            // TODO
+            break;
+        case Operators::EXPR:
+            result = evaluateTree(out, currentNode->left, valueByName);
+            break;
+        case Operators::TERMINAL:
+            result = resolveValue(currentNode, valueByName);
+            break;
+        }
+        return result;
+    }
 
     bool evaluate(std::string &expression, std::map<std::string, std::string> &valuesByName)
     {
